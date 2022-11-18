@@ -1,4 +1,6 @@
 {
+  "window.autoDetectColorScheme": true,
+  "reactSnippets.settings.prettierEnabled": true,
   "typescript.tsdk": "node_modules/typescript/lib",
   "typescript.enablePromptUseWorkspaceTsdk": true
 }

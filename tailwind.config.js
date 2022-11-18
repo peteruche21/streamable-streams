@@ -2,12 +2,14 @@
 
 module.exports = {
   content: [
-    "./node_modules/flowbite-react/**/*.js",
-    "./app/**/*.{ts,tsx}",
-    "./public/**/*.html",
-  ],
+    "./app/**/*.{js,ts,jsx,tsx}", // Note the addition of the `app` directory.
+    "./pages/**/*.{js,ts,jsx,tsx}",
+    "./components/**/*.{js,ts,jsx,tsx}"],
   plugins: [
-    require("flowbite/plugin")
+    require("daisyui"),
   ],
+  daisyui: {
+    themes: ["light", "dark"],
+  },
   theme: {},
 };
