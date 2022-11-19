@@ -7,47 +7,55 @@ import {
 
 import { PlaidLinkOnExit } from "react-plaid-link";
 import { useCallback, useEffect, useState } from "react";
+import { formatAddress } from "../../../utils/formatAddress";
 
+// to be used by ethersjs in interacting with user wallet
 let provider: EIP1193Provider | undefined;
 
+// why plaid?
+// prevent "use client" from being too close to root when using wagmi + rainbowkit
+// ot thirdweb or dynamic_xyz.
+// closest i can find to non-reactive
 const Connect = () => {
   const [isConnected, setIsConnected] = useState(false);
+  const [account, setAccount] = useState("");
+
   const config = {
-    // retrieve from https://dashboard.plaid.com/team/wallet-onboard
     token: process.env.NEXT_PUBLIC_PLAID_TOKEN as string,
     chain: {
-      // RPC gateway URL to use for non-wallet methods
       rpcUrl: process.env.NEXT_PUBLIC_ALCHEMY_URL as string,
-      // EVM chain ID in hexadecimal format as described in https://eips.ethereum.org/EIPS/eip-695
-      // See https://chainlist.org/ for a list of common chains
       chainId: "0x1",
     },
   };
 
+  // callback hanled after user connects wallet for the first time
   const onSuccess = useCallback<PlaidWeb3OnSuccess>(
-    // provider is an EIP-1193 compatible JavaScript object https://eips.ethereum.org/EIPS/eip-1193
-    // provider can be used by other libraries to request more data
     async (_provider) => {
-      const accounts = await _provider.request({
-        method: "eth_accounts",
-      });
-      _provider.on("accountsChanged", handleAccountsChanged);
-      provider = _provider;
-      setIsConnected(true);
+      initializeEIP1193Provider(_provider);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     []
   );
 
+  // takes in an EIP1193 compatible provider, sets up listeners and global provider variable
+  // sets current connected account address
+  const initializeEIP1193Provider = async (
+    _provider: EIP1193Provider | undefined
+  ) => {
+    if (!_provider) return;
+    provider = _provider;
+    _provider.on("accountsChanged", handleAccountsChanged);
+    setAccount(_provider?.selectedAddress);
+    setIsConnected(true);
+  };
+
   const onExit = useCallback<PlaidLinkOnExit>((error, metadata) => {
-    // Optional callback, called if the user exits without connecting a wallet
-    // See https://plaid.com/docs/link/web/#onexit for details
     alert("Action Denied by User!");
   }, []);
 
   const handleAccountsChanged = (accounts: any) => {
     if (accounts.length > 0) {
-      // update UI
+      setAccount(accounts[0]);
     }
   };
 
@@ -63,13 +71,24 @@ const Connect = () => {
     onExit,
   });
 
+  // returns the current plaid provider which contains {on, request, removeListener, providers : EIP1193Provider[]}
+  const getPlaidProvider = async () => {
+    if (!ready || !getCurrentEthereumProvider) return;
+    const plaidProvider = await getCurrentEthereumProvider(config.chain);
+    return plaidProvider;
+  };
+
   useEffect(() => {
-    if (!ready || !getCurrentEthereumProvider || !isProviderActive) return;
+    if (!ready || !isProviderActive) return;
     (async () => {
-      provider = await getCurrentEthereumProvider(config.chain);
-      if (!provider) return;
-      setIsConnected(true);
-      const isActive = await isProviderActive(provider as any);
+      const _provider: any = await getPlaidProvider();
+      if (!_provider) return;
+      // initializes global provider with plaidProvider.providers.v
+      console.log(_provider);
+      _provider?.selectedProvider
+        ? await initializeEIP1193Provider(_provider?.selectedProvider)
+        : await initializeEIP1193Provider(_provider);
+      const isActive = await isProviderActive(_provider);
       if (isActive) {
         console.log("provider is active");
       }
@@ -77,19 +96,47 @@ const Connect = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, getCurrentEthereumProvider, isProviderActive]);
 
+  // opens the plaid dialogue
+  // left this way to allow extra logic to be handled on connect
   const connect = () => open();
 
-  const disconnect = useCallback(() => {
-    if (!disconnectEthereumProvider || !provider) return;
-    (async () => {
-      await disconnectEthereumProvider(provider as any);
-      setIsConnected(false);
-    })();
+  // disconnects a user from the plaid provider
+  const disconnect = useCallback(async () => {
+    const _provider = await getPlaidProvider();
+    if (!disconnectEthereumProvider || !_provider) return;
+    await disconnectEthereumProvider(_provider);
+    setIsConnected(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [disconnectEthereumProvider, provider]);
+  }, [disconnectEthereumProvider]);
 
   if (isConnected) {
-    return <button onClick={disconnect}>Disconnect</button>;
+    return (
+      <div className="tooltip" data-tip="disconnect">
+        <button
+          onClick={disconnect}
+          disabled={!ready || !disconnectEthereumProvider}
+          className="inline-flex gap-2"
+        >
+          {account && formatAddress(account)}{" "}
+          <span>
+            <svg
+              className="w-5 h-5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
+              ></path>
+            </svg>
+          </span>
+        </button>
+      </div>
+    );
   }
 
   return (
